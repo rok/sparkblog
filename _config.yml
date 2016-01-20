@@ -10,8 +10,8 @@ title: Spark for R&D
 email: 
 description: > # this means to ignore newlines until "baseurl:"
   This is a blog about applications of Spark for research and development by various authors, covering use cases of their respective fields and applications.
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "http://yourdomain.com" # the base hostname & protocol for your site
+#baseurl: "" # the subpath of your site, e.g. /blog
+#url: "http://yourdomain.com" # the base hostname & protocol for your site
 twitter_username:
 github_username:
 exclude: [README.md, spark_start.sh, Rakefile, notebooks/.ipynb_checkpoints]
