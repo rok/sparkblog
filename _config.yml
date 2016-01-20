@@ -18,3 +18,4 @@ exclude: [README.md, spark_start.sh, Rakefile, notebooks/.ipynb_checkpoints]
 
 # Build settings
 markdown: kramdown
+highlighter: pygments
