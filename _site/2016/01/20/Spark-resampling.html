@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Spark resampling</title>
+  <meta name="description" content="Working with time dependat data in Spark I often need to aggregate data on arbitrary time intervals. As there is no handy function to that I (with help of eq...">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://yourdomain.com/2016/01/20/Spark-resampling.html">
+  <link rel="alternate" type="application/rss+xml" title="Spark for R&D" href="http://yourdomain.com/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Spark for R&D</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">Spark resampling</h1>
+    <p class="post-meta"><time datetime="2016-01-20T00:00:00+01:00" itemprop="datePublished">Jan 20, 2016</time> • <span itemprop="author" itemscope itemtype="http://schema.org/Person"><span itemprop="name">Rok Mihevc</span></span></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Working with time dependat data in Spark I often need to aggregate data on arbitrary time intervals. As there is no handy function to that I (with help of <a href="https://github.com/equialgo">equialgo</a>) wrote a helper function that will resample a time series column to intervals of arbitrary length, that can then be used for aggregation operations. </p>
+
+<p>Let’s look at the function first:</p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">resample</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">agg_interval</span><span class="o">=</span><span class="mi">900</span><span class="p">,</span> <span class="n">time_format</span><span class="o">=</span><span class="s">&#39;yyyy-MM-dd HH:mm:ss&#39;</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">column</span><span class="p">)</span><span class="o">==</span><span class="nb">str</span><span class="p">:</span>
+        <span class="n">column</span> <span class="o">=</span> <span class="n">F</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="n">column</span><span class="p">)</span>
+
+    <span class="c"># Convert the timestamp to unix timestamp format.</span>
+    <span class="c"># Unix timestamp = number of seconds since 00:00:00 UTC, 1 January 1970.</span>
+    <span class="n">col_ut</span> <span class="o">=</span>  <span class="n">F</span><span class="o">.</span><span class="n">unix_timestamp</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">format</span><span class="o">=</span><span class="n">time_format</span><span class="p">)</span>
+
+    <span class="c"># Divide the time into dicrete intervals, by rounding. </span>
+    <span class="n">col_ut_agg</span> <span class="o">=</span>  <span class="n">F</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">col_ut</span> <span class="o">/</span> <span class="n">agg_interval</span><span class="p">)</span> <span class="o">*</span> <span class="n">agg_interval</span>  
+
+    <span class="c"># Convert to and return a human readable timestamp</span>
+    <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">from_unixtime</span><span class="p">(</span><span class="n">col_ut_agg</span><span class="p">)</span></code></pre></div>
+
+<p>To give an example of use, let’s create a sample timestamped dataframe:</p>
+
+<p><strong>In [1]:</strong></p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">df</span> <span class="o">=</span> <span class="n">sqlContext</span><span class="o">.</span><span class="n">createDataFrame</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="p">[</span><span class="s">&#39;dt&#39;</span><span class="p">,</span><span class="s">&#39;ip&#39;</span><span class="p">,</span><span class="s">&#39;email_provider&#39;</span><span class="p">])</span>
+<span class="n">df</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span></code></pre></div>
+
+<p><strong>Out [1]</strong></p>
+
+<pre><code>+-------------------+---------------+--------------+
+|                 dt|             ip|email_provider|
++-------------------+---------------+--------------+
+|2016-01-20 17:08:24|  76.60.136.211|     yahoo.com|
+|2016-01-20 17:01:05| 36.196.144.103|     gmail.com|
+|2016-01-20 17:56:08| 33.243.151.184|   hotmail.com|
+|2016-01-20 17:25:36|  174.92.55.167|   hotmail.com|
+|2016-01-20 17:01:34|229.223.121.197|     gmail.com|
++-------------------+---------------+--------------+
+only showing top 5 rows
+</code></pre>
+
+<p>We now use the resample function to resample our data to 15 minutes intervals (or rather 900 seconds):</p>
+
+<p><strong>In [2]:</strong></p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">withColumn</span><span class="p">(</span><span class="s">&#39;dt_resampled&#39;</span><span class="p">,</span> <span class="n">resample</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">dt</span><span class="p">,</span> <span class="n">agg_interval</span><span class="o">=</span><span class="mi">900</span><span class="p">))</span>
+<span class="n">df</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span></code></pre></div>
+
+<p><strong>Out [3]:</strong></p>
+
+<pre><code>+-------------------+---------------+--------------+-------------------+
+|                 dt|             ip|email_provider|       dt_resampled|
++-------------------+---------------+--------------+-------------------+
+|2016-01-20 17:08:24|  76.60.136.211|     yahoo.com|2016-01-20 17:00:00|
+|2016-01-20 17:01:05| 36.196.144.103|     gmail.com|2016-01-20 17:00:00|
+|2016-01-20 17:56:08| 33.243.151.184|   hotmail.com|2016-01-20 17:45:00|
+|2016-01-20 17:25:36|  174.92.55.167|   hotmail.com|2016-01-20 17:15:00|
+|2016-01-20 17:01:34|229.223.121.197|     gmail.com|2016-01-20 17:00:00|
++-------------------+---------------+--------------+-------------------+
+only showing top 5 rows
+</code></pre>
+
+<p>We now use the new ‘dt_resampled’ column to group rows by intervals and email providers, and the aggregate the resulting groups by counting rows of groups.</p>
+
+<p><strong>In [4]:</strong></p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">df_resampled</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupBy</span><span class="p">(</span><span class="s">&#39;dt_resampled&#39;</span><span class="p">,</span> <span class="s">&#39;email_provider&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">count</span><span class="p">()</span>
+<span class="n">df_resampled</span><span class="o">.</span><span class="n">show</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span></code></pre></div>
+
+<p><strong>Out [4]:</strong></p>
+
+<pre><code>+-------------------+--------------+-----+
+|               time|email_provider|count|
++-------------------+--------------+-----+
+|2016-01-20 16:30:00|   hotmail.com|   31|
+|2016-01-20 16:30:00|     gmail.com|   28|
+|2016-01-20 16:45:00|   hotmail.com|   17|
+|2016-01-20 16:45:00|     gmail.com|   12|
+|2016-01-20 16:00:00|     yahoo.com|   39|
++-------------------+--------------+-----+
+only showing top 5 rows
+</code></pre>
+
+<p>The data was resampled and aggregated, only thing left is to plot it. We move the aggregated Dataframe to Pandas, pivot it around the ‘email_provider’ column and finally plot the counts in time:</p>
+
+<p><strong>In [5]:</strong></p>
+
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">df_resampled</span><span class="o">.</span><span class="n">toPandas</span><span class="p">()</span> \
+    <span class="o">.</span><span class="n">pivot</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="s">&#39;dt_resampled&#39;</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="s">&#39;email_provider&#39;</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="s">&#39;count&#39;</span><span class="p">)</span> \
+    <span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">[</span><span class="mi">14</span><span class="p">,</span><span class="mi">5</span><span class="p">],</span> <span class="n">title</span><span class="o">=</span><span class="s">&#39;Count emails per 15 minute interval&#39;</span><span class="p">)</span></code></pre></div>
+
+<p><strong>Out [5]:</strong>
+<img src="/notebooks/2016-01-20-Spark-resampling_files/2016-01-20-Spark-resampling_7_1.png" alt="png" /></p>
+
+<p>As shown this resampling can be easy and fast in Spark using a helper function. The presented function will work for from microsecond- to century-long intervals. The one downside would be that leap years will make time stamps over long periods look less nice and solving for that would make the proposed function much more complicated as you can imagine by observing gregorian calendar time shifting:</p>
+
+<p><img src="/notebooks/2016-01-20-Spark-resampling_files/Gregoriancalendarleap_solstice.svg" alt="svg" /></p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Spark for R&D</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Spark for R&D</li>
+          <li><a href="mailto:"></a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>This is a blog about applications of Spark for research and development by various authors, covering use cases of their respective fields and applications.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
